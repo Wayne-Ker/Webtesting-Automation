@@ -8,6 +8,15 @@ from selenium import webdriver
 import xml.etree.ElementTree as ET
 import os
 
+def select_mode():
+    print("Select the mode:")
+    print("1. Passive Mode")
+    print("2. Aggressive Mode")
+    print("3. Pwn Mode")
+
+    mode = int(input("Enter the mode number: "))
+    return mode
+
 def print_status(message, status):
     if status == "running":
         print("\n[*] Running {}... ".format(message))
@@ -21,9 +30,18 @@ def create_directory(target):
     except OSError:
         print(f"Creation of the directory '{target}' failed.")
 
-def nmap_scan(target):
+def nmap_scan(target, mode):
     print_status("Nmap scan", "running")
-    nmap_command = f"nmap -oX {target}/nmap.xml {target} > /dev/null 2>&1"
+    if mode == "Passive":
+        nmap_command = f"nmap -oX {target}/nmap.xml {target} > /dev/null 2>&1"
+    elif mode == "Aggressive":
+        nmap_command = f"nmap -oX {target}/nmap.xml -sC -sV {target} > /dev/null 2>&1"
+    elif mode == "Pwn":
+        nmap_command = f"nmap -oX {target}/nmap.xml -sC -sV -p- {target} > /dev/null 2>&1"
+    else:
+        print("Invalid mode.")
+        return
+
     subprocess.run(nmap_command, shell=True)
     print_status("Nmap scan", "completed")
     print("\033[91mNMAP Scan results located in {target}/nmap.xml\033[0m")
@@ -124,7 +142,20 @@ def analyze_website(url):
     print("\033[93mTechnologies used on the website:\033[0m")
     for key, value in result.items():
         print(f"\033[93m{key}:\033[0m {', '.join(value)}")
+    if 'WordPress' in result['cms']:
+        print("\033[94mWordPress detected on the website, WPScan will be ran in Agressive or Pwn Mode...\033[0m")
+        return True
+    else:
+        return False
     print_status("Website technology analysis", "completed")
+
+def run_wpscan(target):
+    api_token = input("Enter your WPScan API token: ")
+    print_status("WPScan", "running")
+    wpscan_command = f"wpscan --url {target} --api-token {api_token} --random-user-agent --enumerate at,cb,at,dbe,u -o {target}/wpscan_output.txt"
+    subprocess.run(wpscan_command, shell=True)
+    print_status("WPScan", "completed")
+    print("\033[91mWPScan results saved in wpscan_output.txt\033[0m")
 
 def check_ria_cross_domain_policy(url):
     print_status("RIA Cross Domain Policy tests", "running")
@@ -200,6 +231,14 @@ def test_cross_site_flashing(url):
 
     print_status("Cross-Site Flashing test", "completed")
 
+def run_feroxbuster(target):
+    print_status("Feroxbuster", "running")
+    feroxbuster_command = f"feroxbuster -u {target} -x html,asp,aspx,txt,old -w /usr/share/seclists/Discovery/Web-Content/raft-medium-directories-lowercase.txt -o {target}/feroxbuster_output.txt > /dev/null 2>&1"
+    subprocess.run(feroxbuster_command, shell=True)
+    print_status("Feroxbuster", "completed")
+    print("\033[91mFeroxbuster results saved in feroxbuster_output.txt\033[0m")
+
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python script.py <target_website>")
@@ -210,39 +249,7 @@ def main():
     create_directory(target)
 
     print('''
-                                                                                         
-                                           .:--===+++=-::.                                
-                                     .-+*######%%%%%%%%%####**=-.                         
-                                   =##%%%%%######%%%%%%%%%%%%%####=.                      
-                                  +###%%%%######%%%%%%%%%%%%%%%%%%%#.                     
-                                  *##%%%%%######%%%%%%%%%%%%%%%%%%%%-                     
-                                 .*#%%%%%%######%%%%%%%%%%%%%%%%%%%#:                     
-                                 -##%%%%%###**##%%%%%%%%%%%%%%%%%%%#.                     
-                                 -=--:..         ...:::::--==+*#%%%#.                     
-                                ==                     .........::=*                      
-                               *#=                     ............##                     
-                              *%*=                     ...........-##.                    
-                             -%#%-.:::::::::-------------:::......=*#=                    
-                             *%#%%#*=:..:::::::::-------=========+#+#*                    
-                            .##%%%*=-...:-------------=========+#%%+##                    
-                            :**%%%+-..:=++*#*++=---=+*****+++===%%%**#:                   
-                            :+*%%%+-::::---+=++=::-=*#+=+=++===+%@%++#=                   
-                            .+*%%%+*::::::----::::-=++++=======+%@%++#=                   
-                             +#%%#+*-:::::::...:::-==------===+*@@%*=*-                   
-                             +#%%*++=::::::::::::::===-----===+#@@%*=+-                   
-                             =#%%*+%*-:-::::----::-=+++=---==+**@%%#=++                   
-                             -#%%+%@%=---::-:::====++++=====++**@%%#=+#                   
-                             :%%%%@@%*--------===+++**++===++*##%%%*=+*.                  
-                              #%%%@%%%+=---=====+++++++++=++*#*%%%%*==+.                  
-                              #%%@@%%=+++===-----=====++++*#%#%%%%%*==+:                  
-                             -#%%@@%#. -++++=--=+++++++***#%##%%%%%===*+                  
-                         .:+#%#%%@%%#.  .=+++=======++***##***#%%%#**+*+                  
-                .:--=++*#%%#%%#%@@%%%-.   .-=+++++++**++==+**#%%%######+.                 
-           :-+#######%%%%%#%%%%%@@%%#-       .:-====----:=+*#%@%%####%%#*=-.              
-        -+##########%%%%%##%#%%%@%%@%*-.     ......:::::=+#%%@@@%#######%%%%##*+-:        
-      =##########%%%%%%%##%%####%%%%%###+=-:::--==++*##%%@@@@@@@%#######%%%%%%%###+:     
-    -#######%###%%%%%%%##%#####%%%%%################%%%%%%%%%%%%%%%#####%%%%%%%%%%####+.  
-   +#%######%###%%%%%%##%#####%%%%%###################%#####%%%%%%%%%###@@%%%%%%%%%####: 
+ 
  .#%%%#########%%##%%%##%%####%%%%%###############################%%%%#%%%%%%%%%%%%####%# 
 :##%%##%#######%###%%###%%####%%%%%###############################%%%%#%%%%%%%%%%%%###%%#*
 ##%%%##%######%%###%##**#####%%%%%####################################%%%%%%%%##%#%##%%%##
@@ -281,8 +288,20 @@ def main():
 ''')
     print("Lets shine a light on this website..")
 
-    
-    nmap_scan(target)
+    mode = select_mode()
+
+    if mode == 1:  # Passive Mode
+        passive_mode(target)
+    elif mode == 2:  # Aggressive Mode
+        aggressive_mode(target)
+    elif mode == 3:  # Pwn Mode
+        pwn_mode(target)
+    else:
+        print("Invalid mode. Exiting...")
+
+def passive_mode(target):
+    print("Running Passive Mode Scans...")
+    nmap_scan(target, "Passive")
     print_open_ports(target)
     convert_to_html("nmap.xml", "nmap.html", target)
     testssl(target)
@@ -294,7 +313,39 @@ def main():
     check_ria_cross_domain_policy(target)
     check_web_messaging("https://" + target)
     test_cross_site_flashing("https://" + target)
-    
+
+def aggressive_mode(target):
+    print("Running Agressive Mode Scans...")
+    nmap_scan(target, "Agressive")
+    print_open_ports(target)
+    convert_to_html("nmap.xml", "nmap.html", target)
+    testssl(target)
+    test_http_methods(target)
+    check_headers(target)
+    check_websocket("ws://" + target)
+    check_websocket("wss://" + target)
+    if analyze_website(target):
+        run_wpscan(target)
+    check_ria_cross_domain_policy(target)
+    check_web_messaging("https://" + target)
+    test_cross_site_flashing("https://" + target)
+
+def pwn_mode(target):
+    print("Running Pwn Mode Scans...")
+    nmap_scan(target, "Pwn")
+    print_open_ports(target)
+    convert_to_html("nmap.xml", "nmap.html", target)
+    testssl(target)
+    test_http_methods(target)
+    check_headers(target)
+    check_websocket("ws://" + target)
+    check_websocket("wss://" + target)
+    if analyze_website(target):
+        run_wpscan(target)
+    check_ria_cross_domain_policy(target)
+    check_web_messaging("https://" + target)
+    test_cross_site_flashing("https://" + target)
+    run_feroxbuster
 
     print_status("Script Execution", "completed")
 
